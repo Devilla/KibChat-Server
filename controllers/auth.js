@@ -1,37 +1,45 @@
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
 const { catchSyncError } = require("../util/error-handling");
-// Gather all validation errors and put them in here
-//const { validationResult } = require("express-validator/check");
 
 exports.postSignup = async (req, res, next) => {
     passport.authenticate("signup", { session: false }, async (err, user, info) => {
         try {
+            if (err || !user) {
+                const error = catchSyncError(info.message, 401, info.errors);
+                error.isAuthenticated = info.isAuthenticated;
+                throw error;
+            }
+
             return res.json({
-                message: "Signup successful",
+                message: "Sign up successful",
                 user: user
             });
         }
         catch (error) {
-            if (!err.statusCode) {
-                err.statusCode = 500;
+            if (!error.statusCode) {
+                error.statusCode = 500;
             }
-            next(err);
+
+            error.isSignedUp = info.isSignedUp;
+            next(error);
         }
     })(req, res, next);
 };
 
 exports.postLogin = async (req, res, next) => {
-    passport.authenticate("login", async (err, user, info) => {
+    passport.authenticate("login-local", async (err, user, info) => {
         try {
             if (err || !user) {
-                const error = catchSyncError("User was either not found or an error occurred.", 401, err);
+                const error = catchSyncError(info.message, 401, info.errors);
+                error.isAuthenticated = info.isAuthenticated;
                 throw error;
             }
 
-            req.login(user, { session: false }, async (error) => {
-                if (error) {
-                    const error = catchSyncError("Login error occurred.", 401, error);
+            req.login(user, { session: false }, async (loginError) => {
+                if (loginError) {
+                    const error = catchSyncError(info.message, 401, loginError);
+                    error.isAuthenticated = info.isAuthenticated;
                     throw error;
                 }
 
@@ -52,15 +60,18 @@ exports.postLogin = async (req, res, next) => {
                 });
 
                 // Send back the token to the user
-                return res.json({ token });
+                return res.json({ 
+                    message: info.message,
+                    isAuthenticated: info.isAuthenticated,
+                    token: token 
+                });
             });
         } catch (error) {
-            console.log("Something bad happened within contorller Passport Login...");
-            console.log(error);
-            if (!err.statusCode) {
-                err.statusCode = 500;
+            if (!error.statusCode) {
+                error.statusCode = 500;
             }
-            next(err);
+
+            next(error);
         }
         // Why do we have to do this?
     })(req, res, next);

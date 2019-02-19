@@ -23,12 +23,12 @@ app.use((error, req, res, next) => {
     const message = error.message;
     return res.status(status).json({
         message: message,
-        errors: errors
+        errors: error
     });
 });
 
 // Bring up the server once we know that have connected the db successfully
-mongoose.connect(MONGODB_URI, { useNewUrlParser: true })
+mongoose.connect(MONGODB_URI, { useCreateIndex: true, useNewUrlParser: true })
 	.then(() => {
 		mongoose.set("debug", true);
 		app.listen(process.env.PORT || 3000, () => console.log(`Connected to DB! Server listening on port http://${process.env.HOST}:${process.env.PORT}!`));

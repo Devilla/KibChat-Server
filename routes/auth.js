@@ -1,12 +1,10 @@
-const isAuth = require("../middleware/is-auth");
-const userController = require("../controllers/user");
+const validate = require("../util/validation");
 const authController = require("../controllers/auth");
 
 module.exports = (app) => {
 
-    app.post("/signup", authController.postSignup);
+    app.post("/login", validate.loginForm, authController.postLogin);
+    
+    app.post("/signup", validate.signUpForm, authController.postSignup);
 
-    app.post("/login", authController.postLogin);
-
-    app.get("/profile", isAuth, userController.getProfile);
 };
