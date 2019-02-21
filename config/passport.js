@@ -1,8 +1,6 @@
 const bcrypt = require("bcryptjs");
 const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
-const JWTStrategy = require("passport-jwt").Strategy;
-// const ExtractJWT = require("passport-jwt").ExtractJwt;
 const { validationResult } = require("express-validator/check")
  
 const User = require("../models/users");
@@ -25,16 +23,17 @@ passport.use("register", new LocalStrategy({
             });
         }
 
-        const previousUser = await User.findOne({ email: email });
+        const previousUser = await User.findOne({ $or: [{ email: email }, { username: username }] });
 
         if(previousUser) {
             return done(null, false, {
-                message: "Email already exists.",
+                message: "Email or username already exists.",
                 success: false
-            })
+            });
         }
 
-        hashedPassword = await bcrypt.hash(password, process.env.HASH_COST);
+        salt = await bcrypt.genSalt(12);
+        hashedPassword = await bcrypt.hash(password, salt);
 
         const user = new User({
             username: username,
@@ -90,26 +89,3 @@ passport.use("login", new LocalStrategy({
         return done(error);
     }
 }));
-
-// This is the authentication that’s called on the protected routes in the application
-passport.use("jwt", new JWTStrategy({
-        // jwtFromRequest: ExtractJWT.fromAuthHeaderAsBearerToken("Bearer"),
-        jwtFromRequest: req => req.cookies.JWT,
-        secretOrKey: process.env.JWT_SECRET_TOKEN,
-    }, async (jwtPayload, done) => {
-        try {
-            const user = await User.findById(jwtPayload.user._id);
-
-            if(!user) {
-                done(null, false, {
-                    message: "User was not found.",
-                    success: false
-                })
-            }
-
-            done(null, user);
-        } catch(error) {
-            done(error);
-        }
-    }
-));

@@ -1,7 +1,8 @@
+const { authenticate } = require("../middleware/is-auth");
 const userController = require("../controllers/user");
 
 module.exports = (app) => {
 
-    app.get("/", userController.getHome);
+    app.get("/", authenticate, userController.getHome);
 
 };
