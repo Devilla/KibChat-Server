@@ -1,4 +1,3 @@
-const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
 const Schema = mongoose.Schema;
@@ -14,7 +13,7 @@ const userSchema = new Schema({
         required: true,
         unique: true
     },
-    password: {
+    passwordHash: {
         type: String,
         required: true
     }
@@ -29,16 +28,5 @@ const userSchema = new Schema({
 }, {
     timestamps: true
 });
-
-userSchema.methods.generateHash = async (password) => {
-    return await bcrypt.hash(password, 12);
-};
-
-// "this" refers to the already created user because we 
-// defined the function as "function ()" instead of using 
-// arrow function
-userSchema.methods.validatePassword = async function (password) {
-    return await bcrypt.compare(password, this.password);
-};
 
 module.exports = mongoose.model("User", userSchema);
