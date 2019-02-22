@@ -1,8 +1,14 @@
 const path = require("path");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
+const sendgrid = require("@sendgrid/mail");
+
 const rootDir = require("../util/path-helper");
 const { catchSyncError } = require("../util/error-handling");
+
+const User = require("../models/users");
+const Token = require("../models/token");
 
 exports.postSignup = async (req, res, next) => {
     passport.authenticate("register", async (err, user, info) => {
@@ -98,4 +104,95 @@ exports.postLogout = (req, res, next) => {
     //     message: "User successfully logged out.",
     //     isAuthenticated: false
     // });
+};
+
+exports.getConfirmation = async (req, res, next) => {
+    const verificationToken = req.params.token;
+
+    try {
+        // Find a matching token
+        const token = await Token.findOne({ token: verificationToken }); 
+
+        if (!token) {
+            const error = catchSyncError("We were unable to find a valid token. Your token my have expired.", 404, null);
+            throw error;
+        }
+
+        // If we found a token, find a matching user
+        const user = await User.findOne({ _id: token.userId });
+        
+        if (!user) {
+            const error = catchSyncError("We were unable to find a user for this token.", 404, null);
+            throw error;
+        }
+
+        if (user.isVerified) { 
+            const error = catchSyncError("This user has already been verified.", 400, null);
+            throw error;
+        }
+
+        // Verify and save the user
+        user.isVerified = true;
+        await user.save();
+
+        res.sendFile(path.join(rootDir, "frontend", "confirmation-complete.html"));
+        // res.status(200).json({
+        //     message: "The account has been verified. Please log in.",
+        //     success: true
+        // });
+
+    } catch(error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+
+        next(error);
+    }
+};
+
+exports.postResendToken = async (req, res, next) => {
+    const email = req.body.email;
+    
+    try {
+        var user = await User.findOne({ email: email });
+
+        if (!user) {
+            const error = catchSyncError("We were unable to find a user for this token.", 404, null);
+            throw error;
+        }
+
+        if (user.isVerified) { 
+            const error = catchSyncError("This user has already been verified.", 400, null);
+            throw error;
+        }
+
+        const token = new Token({
+            userId: user._id,
+            token: crypto.randomBytes(32).toString("hex")
+        });
+
+        await token.save();
+
+        sendgrid.setApiKey(process.env.SEND_GRID_API);
+
+        sendgrid.send({
+            from: "no-reply@kibchat.com",
+            to: user.email,
+            subject: "Account Verification Token",
+            html: `
+                <p>Hello ${user.username},</p><br>
+                <p>Click this <a href="http://${process.env.HOST}:${process.env.PORT}/confirmation/${token.token}">link</a> to verify your account.</p><br>
+                <p>Thanks,</p>
+                <p>Kibchat Team</p>
+            `
+        });
+
+        res.sendFile(path.join(rootDir, "frontend", "login.html"));
+    } catch(error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+
+        next(error);
+    }
 };

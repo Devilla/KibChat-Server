@@ -1,9 +1,12 @@
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const passport = require("passport");
+const sendgrid = require("@sendgrid/mail");
 const LocalStrategy = require("passport-local").Strategy;
-const { validationResult } = require("express-validator/check")
+const { validationResult } = require("express-validator/check");
  
 const User = require("../models/users");
+const Token = require("../models/token");
 
 passport.use("register", new LocalStrategy({
     usernameField: "email",
@@ -15,7 +18,7 @@ passport.use("register", new LocalStrategy({
         const username = req.body.username;
         const errors = validationResult(req);
 
-        if (!errors.isEmpty) {
+        if (!errors.isEmpty()) {
             return done(null, false, {
                 message: "Validation failed.",
                 success: false,
@@ -43,8 +46,29 @@ passport.use("register", new LocalStrategy({
 
         const createdUser = await user.save();
 
+        const token = new Token({
+            userId: createdUser._id,
+            token: crypto.randomBytes(32).toString("hex")
+        });
+
+        await token.save();
+
+        sendgrid.setApiKey(process.env.SEND_GRID_API);
+
+        sendgrid.send({
+            from: "no-reply@kibchat.com",
+            to: user.email,
+            subject: "Account Verification Token",
+            html: `
+                <p>Hello ${user.username},</p><br>
+                <p>Click this <a href="http://${process.env.HOST}:${process.env.PORT}/confirmation/${token.token}">link</a> to verify your account.</p><br>
+                <p>Thanks,</p>
+                <p>Kibchat Team</p>
+            `
+        });
+
         return done(null, createdUser, {
-            message: "Sign up successful!",
+            message: "User successfully created in the database. Verification email sent.",
             success: true
         });
     
@@ -67,6 +91,13 @@ passport.use("login", new LocalStrategy({
         if (!user) {
             return done(null, false, {
                 message: "Email was not found.",
+                success: false
+            });
+        }
+
+        if(user.isVerified === false) {
+            return done(null, false, {
+                message: "Please verify your account.",
                 success: false
             });
         }
