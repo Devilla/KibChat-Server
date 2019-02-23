@@ -4,15 +4,20 @@ const Schema = mongoose.Schema;
 const ObjectId = Schema.Types.ObjectId;
 
 const tokenSchema = new Schema({
+    // References the user table so that we have 
+    // a user with a matching token 
     userId: {
         type: ObjectId,
         required: true,
-        ref: "User"
+        ref: "User",
+        unique: true
     },
+    // Token that was generated to verify the account
     token: {
         type: String,
         required: true
     },
+    // Time the token was created
     createdAt: {
         type: Date,
         required: true,

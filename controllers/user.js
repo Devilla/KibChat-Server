@@ -1,6 +1,7 @@
 const path = require("path");
 const rootDir = require("../util/path-helper");
 
+// Test secure controller - TODO: Clink50 - needs to be removed later
 exports.getHome = (req, res, next) => {
     try {
         res.sendFile(path.join(rootDir, "frontend", "home.html"));

@@ -1,28 +1,36 @@
-const jwt = require("jsonwebtoken");
+const { verify } = require("jsonwebtoken");
 
-const {
-    catchSyncError
-} = require("../util/error-handling");
+const { catchSyncError } = require("../util/error-handling");
 
+// Middleware that checks if the user is authenticated before
+// trying to access any secure routes
 exports.authenticate = (req, res, next) => {
+    // Try to get the token from the Authorization header
     let token = getTokenFromAuthHeader(req);
     console.log("Token from Auth:", token);
+    // If we couldn't get the token from the Auth header then
     if (!token) {
+        // Try and get the token from the Cookie
         token = getTokenCookie(req);
         console.log("Token from Cookie:", token);
     }
+
+    // If we still don't have a token then return an error
     if (!token) {
         console.log("No token found.");
         const error = catchSyncError("Could not find the Auth token.", 401, null);
         throw error;
     }
 
+    // Instantiate the decoded token
     let decodedToken;
 
+    // Try to verify the token to make sure it hasn't been tampered with
     try {
         console.log("Decoding token:", token);
         // Decodes and checks if it's a valid token
-        decodedToken = jwt.verify(token, process.env.JWT_SECRET_TOKEN);
+        decodedToken = verify(token, process.env.JWT_SECRET_TOKEN);
+    // If there is any issue while verifying throw an error
     } catch (err) {
         const error = catchSyncError("Error while trying to verify your token.", 401, err);
         throw error;
@@ -37,10 +45,16 @@ exports.authenticate = (req, res, next) => {
 
     console.log(decodedToken);
 
-    // We have a valid token
-    // We take the userId out of the token (we stored it in the token when we sent the created token over to the client)
-    // because we will use it when later authenticating the user for other methods
+    // If the user has signed up but has not 
+    // verified their account then throw an error
+    if(!decodedToken.user.isVerified) {
+        const error = catchSyncError("User needs to verify account.", 401, null);
+        throw error;
+    }
+
+    // We have a valid token so store the info in the request object
     req.tokenInfo = decodedToken;
+    // Store the token to send back on subsequent requests
     req.token = token;
     next();
 };
@@ -63,13 +77,16 @@ getTokenFromAuthHeader = (req) => {
     return token;
 };
 
+// Function to retrieve the JWT out of the cookie
 getTokenCookie = (req) => {
-    var token = null;
+    // Instaniate the token
+    let token = null;
 
+    // If there is anything in the request and 
+    // if we have data in the cookies
     if (req && req.cookies) {
+        // Grab the value for the key = JWT
         token = req.cookies["JWT"];
-    } else {
-        console.log("Nothing in cookies:", req.cookies);
     }
 
     return token;

@@ -17,12 +17,16 @@ const userSchema = new Schema({
         type: String,
         required: true
     },
+    // Check to see if the user has verified 
+    // his/her account yet
     isVerified: {
         type: Boolean,
         required: true,
         default: false
     }
 }, {
+    // enable the timestamps to see when the document
+    // was created and also updated
     timestamps: true
 });
 

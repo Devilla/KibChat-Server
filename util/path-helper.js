@@ -1,3 +1,4 @@
-const path = require("path");
+const { dirname } = require("path");
 
-module.exports = path.dirname(process.mainModule.filename);
+// Only used for serving HTML files at the moment
+module.exports = dirname(process.mainModule.filename);
