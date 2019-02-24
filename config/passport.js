@@ -1,11 +1,12 @@
 const passport = require("passport");
-const sendgrid = require("@sendgrid/mail");
-const { compare, hash, genSalt } = require("bcryptjs");
 const LocalStrategy = require("passport-local").Strategy;
+
 const { validationResult } = require("express-validator/check");
+const { sendVerificationEmail } = require("../services/email-service");
+const { generateVerificationCode } = require("../util/common-functions");
  
 const User = require("../models/users");
-const Token = require("../models/token");
+const Token = require("../models/verification-token");
 
 // Sign up feature using passport which listens for a regiser
 // event coming from the the ../controllers/auth.js file. 
@@ -49,19 +50,11 @@ passport.use("register", new LocalStrategy({
             });
         }
 
-        // TODO: Clink50 - Generate the salt and Hash 
-        // the password on save tothe db using .pre("save")
-        // in Mongo
-        // Generate the salt by hashing 12 rounds
-        salt = await genSalt(12);
-        // Hash the password with bcrypt
-        hashedPassword = await hash(password, salt);
-
         // Create the user object with the given data
         const user = new User({
             username: username,
             email: email,
-            passwordHash: hashedPassword
+            passwordHash: password
         });
 
         // Save the user into the database
@@ -71,30 +64,14 @@ passport.use("register", new LocalStrategy({
         // will be a 6 digit code that expires in 1 hour.
         const token = new Token({
             userId: createdUser._id,
-            // TODO: Clink50 - Generating the code needs to be it's own service
-            token: Math.floor(100000 + Math.random() * 900000)
+            token: generateVerificationCode()
         });
 
         // Save the token in the database.
         await token.save();
 
-        // Set the API key for the emailing service
-        // TODO: Clink50 - Probably needs to be it's own service
-        sendgrid.setApiKey(process.env.SEND_GRID_API);
-
-        // Send the email
-        sendgrid.send({
-            from: "no-reply@kibchat.com",
-            to: user.email,
-            subject: "Account Verification Code",
-            html: `
-                <p>Hello ${user.username},</p><br>
-                <p>To verify your account, please enter the following code:</p>
-                <h2>${token.token}</h2>
-                <p>Thanks,</p>
-                <p>Kibchat Team</p>
-            `
-        });
+        // Call email service to generate and email the verification
+        sendVerificationEmail(user.email, user.username, token.token);
 
         // Return to the controller with a success json object
         return done(null, createdUser, {
@@ -132,7 +109,7 @@ passport.use("login", new LocalStrategy({
 
         // Test to see if the given password and the password
         // originally created by the user matches
-        const isMatch = await compare(password, user.passwordHash);
+        const isMatch = await user.comparePassword(password);
 
         // If the passwords don't match then return an error
         if (!isMatch) {

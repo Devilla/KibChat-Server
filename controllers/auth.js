@@ -1,13 +1,16 @@
 const { join } = require("path");
 const passport = require("passport");
-const sendgrid = require("@sendgrid/mail");
 const { sign } = require("jsonwebtoken");
+const { randomBytes } = require("crypto");
 
 const rootDir = require("../util/path-helper");
 const { catchSyncError } = require("../util/error-handling");
+const { sendVerificationEmail } = require("../services/email-service");
+const { generateVerificationCode } = require("../util/common-functions");
 
 const User = require("../models/users");
-const Token = require("../models/token");
+const RefreshToken = require("../models/refresh-token");
+const Token = require("../models/verification-token");
 
 // Signup controller basically calls passport register event
 // checks for any errors that may have returned from passport 
@@ -47,9 +50,6 @@ exports.postSignup = async (req, res, next) => {
             
             next(error);
         }
-    // TODO: Clink50 - find out what exactly this does
-    // Not sure why we need this but if we don't
-    // have it then this doesn't work.
     })(req, res, next);
 };
 
@@ -75,45 +75,69 @@ exports.postLogin = async (req, res, next) => {
                 throw error;
             }
 
-            // Create the payload to store in the JWT
-            const payload = {
-                user: {
-                    // We don't want to store the sensitive information such as the
-                    // user password in the token so we pick only the email and id
-                    _id: user._id.toString(),
-                }
-            };
-
-            // If the user is verified then go to the home page on login
-            if(user.isVerified) {
-                isVerifiedPage = "home.html";
-            } 
-            // if not then take the user to the verify account page
-            else {
-                isVerifiedPage = "verification-code.html";
-                // This is used to tell whether the users account is verified
-                payload.user.isVerified = false;
-            }
-
             req.login(user, async (loginError) => {
-                // Sign the JWT token and populate the payload with the user email and id
-                const token = sign(payload, process.env.JWT_SECRET_TOKEN, {
-                    // Token becomes invalid after an hour. This is necessary because the JWT can be stolen since the token
-                    // is stored on the client side. So a victim could log in and then not log out of the website and leave 
-                    // the computer and an attacker can get on that computer, store the JWT off the browser and then use it
-                    // forever. With the expiresIn option, that's not possible.
-                    expiresIn: 60 * 60 * 24 * 1000 * 1
+                // Generate the refresh token 
+                const refreshToken = await randomBytes(40).toString("hex");
+                
+                console.log("User object from the login:", user);
+
+                // Save the refresh token in the database 
+                const newRefreshToken = new RefreshToken({
+                    userId: user._id,
+                    token: refreshToken
                 });
+
+                await newRefreshToken.save();
+
+                console.log("dbRefreshToken found based on the userId:", user._id);
+
+                // Create the payload to store in the JWT
+                const payload = {
+                    user: {
+                        // We don't want to store the sensitive information such as the
+                        // user password in the token so we pick only the email and id
+                        _id: user._id.toString(),
+                        username: user.username,
+                        email: user.email,
+                        isVerified: user.isVerified
+                    }
+                };
+
+                console.log("Payload created in Login:", payload);
+
+                // If the user is verified then go to the home page on login
+                if(user.isVerified) {
+                    console.log("User is verified.");
+                    isVerifiedPage = "home.html";
+                } 
+                // if not then take the user to the verify account page
+                else {
+                    console.log("User is not verified.")
+                    isVerifiedPage = "verification-code.html";
+                    // This is used to tell whether the users account is verified
+                    payload.user.isVerified = false;
+                }
+                
+                // Sign the JWT token and populate the payload with the user email and id
+                const signedAccessToken = sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
+                    expiresIn: 25 // 25 seconds
+                });
+
+                console.log("You have one minute until the JWT expires starting now:", new Date().getTime())
 
                 // Send back the token to the user
                 // Return JSON
                 res.status(200)
-                    .cookie("JWT", token, {
+                    .cookie("JWT", signedAccessToken, {
                         httpOnly: true,
                         // TODO: Clink50 - Set secure: true here once we have https
-                        // TODO: Clink50 - Probably need to minimize how long this cookie expires for
-                        maxAge: 60 * 60 * 24 * 1000 * 1 // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
-                    }).sendFile(join(rootDir, "frontend", isVerifiedPage));
+                        maxAge: 1000 * 60 * 60 * 1
+                    })
+                    .cookie("refreshToken", refreshToken, {
+                        httpOnly: true,
+                        maxAge: 60 * 60 * 24 * 1000 * 14 // 60 minutes * 60 seconds * 24 hours * 1000 ms * 14 day = expires in 2 weeks
+                    })
+                    .sendFile(join(rootDir, "frontend", isVerifiedPage));
             });
         // Catch any unsuspecting errors
         } catch (error) {
@@ -123,14 +147,22 @@ exports.postLogin = async (req, res, next) => {
 
             next(error);
         }
-    // TODO: Clink50 - find out what exactly this does
     })(req, res, next);
 };
 
 // Logout controller will delete the JWT out of
 // the cookie and return the response
-exports.postLogout = (req, res, next) => {
+exports.postLogout = async (req, res, next) => {
+    
+    const refreshToken = req.cookies["refreshToken"];
+    
     res.clearCookie("JWT");
+    res.clearCookie("refreshToken");
+
+    console.log("Cleared JWT and Refresh Token out of cookies.");
+    console.log("Deleting refreshToken from DB:", refreshToken);
+
+    await RefreshToken.deleteOne({ token: refreshToken });
 
     res.sendFile(join(rootDir, "frontend", "login.html"));
 
@@ -195,8 +227,9 @@ exports.postConfirmation = async (req, res, next) => {
         };
 
         // Sign the token with the payload and expire the token in a day
-        const token = sign(payload, process.env.JWT_SECRET_TOKEN, {
-            expiresIn: 60 * 60 * 24 * 1000 * 1 // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
+        const token = sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
+            expiresIn: 90 
+            // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
         });
 
         // If the user if verified then clear the old JWT because it had information
@@ -260,25 +293,9 @@ exports.postResendToken = async (req, res, next) => {
         // Get the token based on the userId and generate a new token. The "new" option 
         // tells MongoDB to set the token to the new values. By default, it still would 
         // have the old values so the email would not have the new verification code.
-        const token = await Token.findOneAndUpdate({ userId: user._id }, { token: Math.floor(100000 + Math.random() * 900000) }, { new: true });
+        const token = await Token.findOneAndUpdate({ userId: user._id }, { token: generateVerificationCode() }, { new: true });
 
-        // TODO: This needs to be it's own email service
-        // Set the API key for sendgrid
-        sendgrid.setApiKey(process.env.SEND_GRID_API);
-
-        // Send the email using sendgrid
-        sendgrid.send({
-            from: "no-reply@kibchat.com",
-            to: user.email,
-            subject: "Account Verification Code",
-            html: `
-                <p>Hello ${user.username},</p><br>
-                <p>To verify your account, please enter the following code:</p>
-                <h2>${token.token}</h2>
-                <p>Thanks,</p>
-                <p>Kibchat Team</p>
-            `
-        });
+        sendVerificationEmail(user.email, user.username, token.token);
 
         // Return JSON
         res.sendFile(join(rootDir, "frontend", "verification-code.html"));

@@ -1,6 +1,8 @@
 const moment = require("moment");
 const rateLimit = require("express-rate-limit");
 
+// TODO: Clink50 - Refactor to a generic limiter
+
 // Login limiter that will have 4 attempts total for 
 // a one hour window.
 exports.loginLimiter = rateLimit({
