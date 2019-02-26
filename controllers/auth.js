@@ -1,12 +1,11 @@
 const { join } = require("path");
 const passport = require("passport");
-const { sign } = require("jsonwebtoken");
-const { randomBytes } = require("crypto");
 
 const rootDir = require("../util/path-helper");
 const { catchSyncError } = require("../util/error-handling");
 const { sendVerificationEmail } = require("../services/email-service");
 const { generateVerificationCode } = require("../util/common-functions");
+const { createPayload, sign, generateRefreshToken, decode } = require("../services/token-service");
 
 const User = require("../models/users");
 const RefreshToken = require("../models/refresh-token");
@@ -76,32 +75,17 @@ exports.postLogin = async (req, res, next) => {
             }
 
             req.login(user, async (loginError) => {
-                // Generate the refresh token 
-                const refreshToken = await randomBytes(40).toString("hex");
+                const refresh = req.cookies["refreshToken"];
                 
-                console.log("User object from the login:", user);
+                // If user has a refresh token then delete it
+                // TODO: Clink50 - Make this better
+                if(refresh) {
+                    console.log("Made it in refresh")
+                    // if user already has a refresh token, delete it
+                    await RefreshToken.findOneAndDelete({ userId: user._id });
+                }
 
-                // Save the refresh token in the database 
-                const newRefreshToken = new RefreshToken({
-                    userId: user._id,
-                    token: refreshToken
-                });
-
-                await newRefreshToken.save();
-
-                console.log("dbRefreshToken found based on the userId:", user._id);
-
-                // Create the payload to store in the JWT
-                const payload = {
-                    user: {
-                        // We don't want to store the sensitive information such as the
-                        // user password in the token so we pick only the email and id
-                        _id: user._id.toString(),
-                        username: user.username,
-                        email: user.email,
-                        isVerified: user.isVerified
-                    }
-                };
+                const payload = createPayload(user);
 
                 console.log("Payload created in Login:", payload);
 
@@ -114,30 +98,34 @@ exports.postLogin = async (req, res, next) => {
                 else {
                     console.log("User is not verified.")
                     isVerifiedPage = "verification-code.html";
-                    // This is used to tell whether the users account is verified
-                    payload.user.isVerified = false;
                 }
                 
-                // Sign the JWT token and populate the payload with the user email and id
-                const signedAccessToken = sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-                    expiresIn: 25 // 25 seconds
+                const accessToken = await sign(payload);
+                const refreshToken = await generateRefreshToken();
+
+                const newRefreshToken = new RefreshToken({
+                    userId: user._id,
+                    token: refreshToken
                 });
 
-                console.log("You have one minute until the JWT expires starting now:", new Date().getTime())
+                await newRefreshToken.save();
+
+                console.log(`You have ${process.env.ACCESS_TOKEN_LIFE} seconds until the JWT expires starting now:`, new Date().getTime());
 
                 // Send back the token to the user
                 // Return JSON
                 res.status(200)
-                    .cookie("JWT", signedAccessToken, {
+                    .cookie("JWT", accessToken, {
                         httpOnly: true,
                         // TODO: Clink50 - Set secure: true here once we have https
-                        maxAge: 1000 * 60 * 60 * 1
+                        maxAge: 900000 // 15 minutes
                     })
                     .cookie("refreshToken", refreshToken, {
                         httpOnly: true,
-                        maxAge: 60 * 60 * 24 * 1000 * 14 // 60 minutes * 60 seconds * 24 hours * 1000 ms * 14 day = expires in 2 weeks
+                        maxAge: 2147483647 // year 2038 - interesting bug to look into
                     })
                     .sendFile(join(rootDir, "frontend", isVerifiedPage));
+            
             });
         // Catch any unsuspecting errors
         } catch (error) {
@@ -154,7 +142,7 @@ exports.postLogin = async (req, res, next) => {
 // the cookie and return the response
 exports.postLogout = async (req, res, next) => {
     
-    const refreshToken = req.cookies["refreshToken"];
+    const refreshToken = req.refreshToken;
     
     res.clearCookie("JWT");
     res.clearCookie("refreshToken");
@@ -228,7 +216,7 @@ exports.postConfirmation = async (req, res, next) => {
 
         // Sign the token with the payload and expire the token in a day
         const token = sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-            expiresIn: 90 
+            expiresIn: parseInt(process.env.ACCESS_TOKEN_LIFE)
             // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
         });
 

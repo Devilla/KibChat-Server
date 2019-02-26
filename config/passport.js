@@ -93,11 +93,12 @@ passport.use("login", new LocalStrategy({
     usernameField: "email",
     passwordField: "password",
     session: false,
-}, async (email, password, done) => {
+    passReqToCallback: true
+}, async (req, email, password, done) => {
     try {
         // Find the user in the database based on the given email
         const user = await User.findOne({ email: email });
-
+        
         // If the user doesn't exist in the
         //  database then the email is incorrect
         if (!user) {
