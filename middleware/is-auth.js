@@ -5,10 +5,6 @@ const RefreshToken = require("../models/refresh-token");
 // Middleware that checks if the user is authenticated before
 // trying to access any secure routes
 exports.authenticate = async (req, res, next) => {
-    // logging purposes
-    let tokenExpiredTime;
-    const now = new Date().getTime() / 1000;
-
     let decodedToken;
     // we have a JWT, it should be in the cookies req.cookies["JWT"]
     // we should also have a refresh token in the cookies at req.cookies["refreshToken"] make not expire
@@ -38,6 +34,7 @@ exports.authenticate = async (req, res, next) => {
     }
     else {
         // logging purposes
+        const now = new Date().getTime() / 1000;
         console.log("Token was verified:", decodedToken);
         console.log("Time left til expiring:", decodedToken.exp - now);
 
@@ -85,6 +82,7 @@ getRefreshToken = async (refresh, res, next) => {
     try {
         console.log("JWT could not be verified. Using refresh token:", refresh);
 
+        // Find the refresh token from the cookies and get the user information
         const dbRefreshToken = await RefreshToken.findOne({ token: refresh }).populate("userId");
 
         if (!dbRefreshToken) {
@@ -101,6 +99,8 @@ getRefreshToken = async (refresh, res, next) => {
 
         const { userId, isRevoked } = dbRefreshToken;
 
+        // If the user is revoked from using this
+        // refresh token then throw an error
         if (isRevoked) {
             console.log("User is revoked.");
             const error = {
@@ -111,6 +111,7 @@ getRefreshToken = async (refresh, res, next) => {
             return next(error);
         }
 
+        // If the user is not verified then throw an error
         if (!userId.isVerified) {
             console.log("User is not verified.");
             const error = {
@@ -126,6 +127,9 @@ getRefreshToken = async (refresh, res, next) => {
         accessToken = await sign(payload);
         refreshToken = await generateRefreshToken();
 
+        // Assign it to a token object because I couldn't just
+        // return the object. I had to create a variable and 
+        // return it instead of an object.
         token = {
             newPayload: payload,
             newAccessToken: accessToken,

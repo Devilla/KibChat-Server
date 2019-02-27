@@ -2,9 +2,8 @@ const { join } = require("path");
 
 const rootDir = require("../util/path-helper");
 const validate = require("../util/validation");
-const authController = require("../controllers/auth");
-const { authenticate } = require("../middleware/is-auth");
 const rateLimit = require("../util/rate-limiter");
+const authController = require("../controllers/auth");
 
 module.exports = (app) => {
 
@@ -34,6 +33,6 @@ module.exports = (app) => {
 
     app.post("/resend", rateLimit.sendVerificationLimiter, authController.postResendToken);
 
-    app.post("/logout", authenticate, authController.postLogout);
+    app.post("/logout", authController.postLogout);
 
 };

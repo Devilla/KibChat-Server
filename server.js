@@ -40,8 +40,8 @@ require("./routes/home")(app);
 // TODO: Clink50 - need better error handling
 app.use((error, req, res, next) => {
     console.log(error);
-    const status = error.statusCode || 500;
-    const message = error.message;
+    // const status = error.statusCode || 500;
+    // const message = error.message;
     return res.sendFile(path.join(rootDir, "frontend", "login.html"));
     // return res.status(status).json({
     //     message: message,
