@@ -9,7 +9,8 @@ exports.loginLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
     max: 3, // 4 attempts
     handler: (req, res, next) => {
-        return getRemainingTime(req.rateLimit.resetTime, "login");
+        const data =  getRemainingTime(req.rateLimit.resetTime, "login");
+        return res.status(429).send(data);
     }
 });
 
@@ -19,7 +20,8 @@ exports.signUpLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
     max: 2, // 3 attempts
     handler: (req, res, next) => {
-        return getRemainingTime(req.rateLimit.resetTime, "signup");
+        const data =  getRemainingTime(req.rateLimit.resetTime, "signup");
+        return res.status(429).send(data);
     }
 });
 
