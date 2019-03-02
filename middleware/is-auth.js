@@ -28,9 +28,11 @@ exports.authenticate = async (req, res, next) => {
 
     if (!decodedToken) {
         newTokens = await getRefreshToken(refresh, res, next);
-        decodedToken = newTokens.newPayload;
-        JWT = newTokens.newAccessToken;
-        refresh = newTokens.newRefreshToken;
+        if (newTokens) {
+            decodedToken = newTokens.newPayload;
+            JWT = newTokens.newAccessToken;
+            refresh = newTokens.newRefreshToken;
+        }
     }
     else {
         // logging purposes
@@ -86,7 +88,7 @@ getRefreshToken = async (refresh, res, next) => {
         const dbRefreshToken = await RefreshToken.findOne({ token: refresh }).populate("userId");
 
         if (!dbRefreshToken) {
-            console.log("Could not find a matching refresh token in the database: ", refresh);
+            console.log("Could not find a matching refresh token in the database:", refresh);
             const error = {
                 message: "Could not find the Refresh token.",
                 statusCode: 401

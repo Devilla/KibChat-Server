@@ -142,7 +142,7 @@ exports.postLogin = async (req, res, next) => {
 // the cookie and return the response
 exports.postLogout = async (req, res, next) => {
     
-    const refreshToken = req.refreshToken;
+    const refreshToken = req.cookies["refreshToken"];
     
     res.clearCookie("JWT");
     res.clearCookie("refreshToken");
