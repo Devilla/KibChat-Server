@@ -27,7 +27,7 @@ exports.postSignup = (req, res, next) => {
             // If the user is returned as false, display the generic message 
             // set the status, and throw an error
             if (!user) {
-                const error = catchSyncError(info.message, Constants.NOT_FOUND, info.errors);
+                const error = catchSyncError(info.message, Constants.BAD_REQUEST, info.errors);
                 error.type = info.type;
                 throw error;
             }
