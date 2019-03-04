@@ -1,7 +1,5 @@
-const { join } = require("path");
 const passport = require("passport");
 
-const rootDir = require("../util/path-helper");
 const Constants = require("../util/constants");
 const { catchSyncError } = require("../util/error-handling");
 const { sendVerificationEmail } = require("../services/email-service");
@@ -38,12 +36,14 @@ exports.postSignup = (req, res, next) => {
             // just sends the response back to the client
             req.login(user, async () => {
                 // Return JSON
-                // return res.status(Constants.RESOURCE_CREATED).json({
-                //         message: "Sign up successful",
-                //         type: info.type,
-                //         user: user
-                // });
-                return res.sendFile(join(rootDir, "frontend", "verification-code.html"));
+                return res.status(Constants.RESOURCE_CREATED).json({
+                        message: "Sign up successful",
+                        type: info.type,
+                        userId: user._id,
+                        userName: user.username,
+                        userEmail: user.email,
+                        userIsVerified: user.isVerified
+                });
             });
         // Catch any unsuspecting errors
         } catch (error) {
@@ -127,12 +127,10 @@ exports.postLogin = async (req, res, next) => {
                         httpOnly: true,
                         maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
                     })
-                    // .json({
-                    //     message: "User logged in successfully.",
-                    //     type: info.type
-                    // });
-                    .sendFile(join(rootDir, "frontend", isVerifiedPage));
-            
+                    .json({
+                        message: "User logged in successfully.",
+                        type: info.type
+                    });
             });
         // Catch any unsuspecting errors
         } catch (error) {
@@ -159,11 +157,10 @@ exports.postLogout = async (req, res, next) => {
     await RefreshToken.deleteOne({ token: refreshToken });
     
     // Return JSON
-    // return res.status(Constants.OK).json({
-    //     message: "User successfully logged out.",
-    //     type: "logout-success"
-    // });
-    return res.sendFile(join(rootDir, "frontend", "login.html"));
+    return res.status(Constants.OK).json({
+        message: "User successfully logged out.",
+        type: "logout-success"
+    });
 };
 
 // Confirmation controller gets the given token from the body of the 
@@ -216,11 +213,6 @@ exports.postConfirmation = async (req, res, next) => {
         // saying that the user was not verified and finally go to the home page
         if (user.isVerified) { 
             res.clearCookie("JWT");
-            isVerifiedPage = "confirmation-complete.html";
-        }
-        // Else the user still needs to verify the account
-        else {
-            isVerifiedPage = "verification-code.html";
         }
 
         // Send back the token to the user through setting the cookie
@@ -234,11 +226,10 @@ exports.postConfirmation = async (req, res, next) => {
                 httpOnly: true,
                 maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
             })
-            // .json({
-            //     message: "The account has been verified. Please log in.",
-            //     type: "account-verified"
-            // });
-            .sendFile(join(rootDir, "frontend", isVerifiedPage));
+            .json({
+                message: "The account has been verified. Please log in.",
+                type: "account-verified"
+            });
     // Catch any unsuspecting errors
     } catch(error) {
         if (!error.statusCode) {
@@ -275,16 +266,15 @@ exports.postResendToken = async (req, res, next) => {
         // Get the token based on the userId and generate a new token. The "new" option 
         // tells MongoDB to set the token to the new values. By default, it still would 
         // have the old values so the email would not have the new verification code.
-        const token = await Token.findOneAndUpdate({ userId: user._id }, { token: generateVerificationCode() }, { new: true });
+        const token = await Token.findOneAndUpdate({ userId: user._id }, { token: generateVerificationCode() }, { new: true, upsert: true });
 
         sendVerificationEmail(user.email, user.username, token.token);
 
         // Return JSON
-        // res.status(Constants.OK).json({
-        //     message: "Verification token has been reset and sent to user.",
-        //     type: "verification-token-reset"
-        // });
-        return res.sendFile(join(rootDir, "frontend", "verification-code.html"));
+        res.status(Constants.OK).json({
+            message: "Verification token has been reset and sent to user.",
+            type: "verification-token-reset"
+        });
 
         // Catch any unsuspecting errors
     } catch(error) {

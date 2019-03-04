@@ -119,10 +119,17 @@ passport.use("login", new LocalStrategy({
             });
         }
 
+        if(!user.isVerified) {
+            return done(null, false, {
+                message: "Please verify your account.",
+                type: "account-not-verified"
+            });
+        }
+
         // Return a successful login to the controller
         return done(null, user, { 
             message: "Logged in successfully.",
-            type: user.isVerified ? "login-successful" : "account-not-verified"
+            type: "login-successful"
         });
 
     // Catch any unsuscpecting errors that may occur
