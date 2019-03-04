@@ -91,17 +91,6 @@ exports.postLogin = async (req, res, next) => {
                     await RefreshToken.findOneAndDelete({ userId: user._id });
                 }
 
-                // If the user is verified then go to the home page on login
-                if(user.isVerified) {
-                    console.log("User is verified.");
-                    isVerifiedPage = "home.html";
-                } 
-                // if not then take the user to the verify account page
-                else {
-                    console.log("User is not verified.")
-                    isVerifiedPage = "verification-code.html";
-                }
-
                 const payload = createPayload(user);
                 const accessToken = await sign(payload);
                 const refreshToken = await generateRefreshToken();
