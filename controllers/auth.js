@@ -109,11 +109,12 @@ exports.postLogin = async (req, res, next) => {
                 return res.status(Constants.OK)
                     .cookie("JWT", accessToken, {
                         httpOnly: true,
-                        // TODO: Clink50 - Set secure: true here once we have https
+                        secure: true,
                         maxAge: process.env.JWT_ACCESS_TOKEN_COOKIE_LIFE
                     })
                     .cookie("refreshToken", refreshToken, {
                         httpOnly: true,
+                        secure: true,
                         maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
                     })
                     .json({
@@ -208,11 +209,12 @@ exports.postConfirmation = async (req, res, next) => {
         return res.status(Constants.OK)
             .cookie("JWT", accessToken, {
                 httpOnly: true,
-                // TODO: Clink50 - Set secure: true here once we have https
+                secure: true,
                 maxAge: process.env.JWT_ACCESS_TOKEN_COOKIE_LIFE
             })
             .cookie("refreshToken", refreshToken, {
                 httpOnly: true,
+                secure: true,
                 maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
             })
             .json({

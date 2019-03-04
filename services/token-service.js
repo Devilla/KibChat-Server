@@ -3,9 +3,18 @@ const { randomBytes } = require("crypto");
 
 module.exports = {
 	sign: async (payload) => {
-		return await jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-			expiresIn: parseInt(process.env.JWT_ACCESS_TOKEN_LIFE)
-		});
+		try {
+			return await jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
+				expiresIn: parseInt(process.env.JWT_ACCESS_TOKEN_LIFE)
+			});
+		} catch (err) {
+			console.log(err);
+			if (!error.statusCode) {
+				error.statusCode = Constants.INTERNAL_SERVER_ERROR;
+			}
+	
+			next(error);
+		}
 	},
 	verify: async (token) => {
 		try {
@@ -16,11 +25,22 @@ module.exports = {
 		}
 	},
 	decode: (token) => {
-		return jwt.decode(token, { complete: true });
+		return jwt.decode(token, {
+			complete: true
+		});
 		//returns null if token is invalid
 	},
 	generateRefreshToken: async () => {
-		return await randomBytes(40).toString("hex");
+		try {
+			return await randomBytes(40).toString("hex");
+		} catch (err) {
+			console.log(err);
+			if (!error.statusCode) {
+				error.statusCode = Constants.INTERNAL_SERVER_ERROR;
+			}
+	
+			next(error);
+		}
 	},
 	createPayload: (userId) => {
 		return {
