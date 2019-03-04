@@ -4,7 +4,7 @@ const { randomBytes } = require("crypto");
 module.exports = {
 	sign: async (payload) => {
 		return await jwt.sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-			expiresIn: parseInt(process.env.ACCESS_TOKEN_LIFE)
+			expiresIn: parseInt(process.env.JWT_ACCESS_TOKEN_LIFE)
 		});
 	},
 	verify: async (token) => {

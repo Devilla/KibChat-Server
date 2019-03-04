@@ -2,10 +2,11 @@ const { join } = require("path");
 const passport = require("passport");
 
 const rootDir = require("../util/path-helper");
+const Constants = require("../util/constants");
 const { catchSyncError } = require("../util/error-handling");
 const { sendVerificationEmail } = require("../services/email-service");
 const { generateVerificationCode } = require("../util/common-functions");
-const { createPayload, sign, generateRefreshToken, decode } = require("../services/token-service");
+const { createPayload, sign, generateRefreshToken } = require("../services/token-service");
 
 const User = require("../models/users");
 const RefreshToken = require("../models/refresh-token");
@@ -14,39 +15,42 @@ const Token = require("../models/verification-token");
 // Signup controller basically calls passport register event
 // checks for any errors that may have returned from passport 
 // and sends back a response
-exports.postSignup = async (req, res, next) => {
-    passport.authenticate("register", async (err, user, info) => {
+exports.postSignup = (req, res, next) => {
+    passport.authenticate("register", (err, user, info) => {
         try {
             // If there was an error that occurred while signing
             // a user up, throw an error.
             if (err) {
-                const error = catchSyncError("Unexpected error occurred.", 500, err);
+                const error = catchSyncError("Unexpected error occurred.", Constants.INTERNAL_SERVER_ERROR, err);
+                error.type = "signup-failed";
                 throw error;
             }
 
             // If the user is returned as false, display the generic message 
             // set the status, and throw an error
             if (!user) {
-                const error = catchSyncError(info.message, 404, info.errors);
+                const error = catchSyncError(info.message, Constants.NOT_FOUND, info.errors);
+                error.type = info.type;
                 throw error;
             }
 
             // Not sure the purpose of login but this 
             // just sends the response back to the client
-            req.login(user, async (registerError) => {
-                res.sendFile(join(rootDir, "frontend", "verification-code.html"));
+            req.login(user, async () => {
                 // Return JSON
-                // return res.status(200).json({
-                //     message: "Sign up successful",
-                //     user: user"
+                // return res.status(Constants.RESOURCE_CREATED).json({
+                //         message: "Sign up successful",
+                //         type: info.type,
+                //         user: user
                 // });
+                return res.sendFile(join(rootDir, "frontend", "verification-code.html"));
             });
         // Catch any unsuspecting errors
         } catch (error) {
             if (!error.statusCode) {
-                error.statusCode = 500;
+                error.statusCode = Constants.INTERNAL_SERVER_ERROR;
             }
-            
+            error.type = "signup-failed";
             next(error);
         }
     })(req, res, next);
@@ -62,15 +66,17 @@ exports.postLogin = async (req, res, next) => {
             // If there was an error that occurred while logging
             // a user in, throw an error.
             if (err) {
-                const error = catchSyncError("Unexpected error occurred.", 500, err);
+                const error = catchSyncError("Unexpected error occurred.", Constants.INTERNAL_SERVER_ERROR, err);
+                error.type = "login-failed";
                 throw error;
             }
 
             // If the user is returned as false, display the generic message 
             // set the status, and throw an error
             if (!user) {
-                const error = catchSyncError(info.message, 401, info.errors);
-                error.remainingCount = req.rateLimit.remaining || 0;
+                const error = catchSyncError(info.message, Constants.UNAUTHORIZED, info.errors);
+                error.remainingAttemptsCount = req.rateLimit.remaining || 0;
+                error.type = info.type;
                 throw error;
             }
 
@@ -85,10 +91,6 @@ exports.postLogin = async (req, res, next) => {
                     await RefreshToken.findOneAndDelete({ userId: user._id });
                 }
 
-                const payload = createPayload(user);
-
-                console.log("Payload created in Login:", payload);
-
                 // If the user is verified then go to the home page on login
                 if(user.isVerified) {
                     console.log("User is verified.");
@@ -99,7 +101,8 @@ exports.postLogin = async (req, res, next) => {
                     console.log("User is not verified.")
                     isVerifiedPage = "verification-code.html";
                 }
-                
+
+                const payload = createPayload(user);
                 const accessToken = await sign(payload);
                 const refreshToken = await generateRefreshToken();
 
@@ -110,29 +113,33 @@ exports.postLogin = async (req, res, next) => {
 
                 await newRefreshToken.save();
 
-                console.log(`You have ${process.env.ACCESS_TOKEN_LIFE} seconds until the JWT expires starting now:`, new Date().getTime());
+                console.log(`You have ${process.env.JWT_ACCESS_TOKEN_LIFE} seconds until the JWT expires starting now:`, new Date().getTime());
 
                 // Send back the token to the user
                 // Return JSON
-                res.status(200)
+                return res.status(Constants.OK)
                     .cookie("JWT", accessToken, {
                         httpOnly: true,
                         // TODO: Clink50 - Set secure: true here once we have https
-                        maxAge: 900000 // 15 minutes
+                        maxAge: process.env.JWT_ACCESS_TOKEN_COOKIE_LIFE
                     })
                     .cookie("refreshToken", refreshToken, {
                         httpOnly: true,
-                        maxAge: 2147483647 // year 2038 - interesting bug to look into
+                        maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
                     })
+                    // .json({
+                    //     message: "User logged in successfully.",
+                    //     type: info.type
+                    // });
                     .sendFile(join(rootDir, "frontend", isVerifiedPage));
             
             });
         // Catch any unsuspecting errors
         } catch (error) {
             if (!error.statusCode) {
-                error.statusCode = 500;
+                error.statusCode = Constants.INTERNAL_SERVER_ERROR;
             }
-
+            error.type = "login-failed";
             next(error);
         }
     })(req, res, next);
@@ -141,7 +148,6 @@ exports.postLogin = async (req, res, next) => {
 // Logout controller will delete the JWT out of
 // the cookie and return the response
 exports.postLogout = async (req, res, next) => {
-    
     const refreshToken = req.cookies["refreshToken"];
     
     res.clearCookie("JWT");
@@ -151,14 +157,13 @@ exports.postLogout = async (req, res, next) => {
     console.log("Deleting refreshToken from DB:", refreshToken);
 
     await RefreshToken.deleteOne({ token: refreshToken });
-
-    res.sendFile(join(rootDir, "frontend", "login.html"));
-
+    
     // Return JSON
-    // return res.status(200).json({
+    // return res.status(Constants.OK).json({
     //     message: "User successfully logged out.",
-    //     isAuthenticated: false
+    //     type: "logout-success"
     // });
+    return res.sendFile(join(rootDir, "frontend", "login.html"));
 };
 
 // Confirmation controller gets the given token from the body of the 
@@ -174,7 +179,7 @@ exports.postConfirmation = async (req, res, next) => {
 
         // If we couldn't find a matching token then something is wrong so return an error
         if (!dbToken) {
-            const error = catchSyncError("We were unable to find a valid token. Your token my have expired.", 404, null);
+            const error = catchSyncError("We were unable to find a valid token. Your token my have expired.", Constants.NOT_FOUND, null);
             throw error;
         }
 
@@ -183,13 +188,13 @@ exports.postConfirmation = async (req, res, next) => {
         
         // If we can't find a matching user then somthing is wrong so return an error
         if (!user) {
-            const error = catchSyncError("We were unable to find a user for this token.", 404, null);
+            const error = catchSyncError("We were unable to find a user for this token.", Constants.NOT_FOUND, null);
             throw error;
         }
 
         // If the user has previously verified the account then return an error
         if (user.isVerified) { 
-            const error = catchSyncError("This user has already been verified.", 400, null);
+            const error = catchSyncError("This user has already been verified.", Constants.BAD_REQUEST, null);
             throw error;
         }
 
@@ -203,22 +208,9 @@ exports.postConfirmation = async (req, res, next) => {
         // to reduce the chances of having a duplicate token
         await Token.findByIdAndRemove(dbToken._id);
 
-        // Create the payload that the token should return back to the client
-        const payload = {
-            user: {
-                // We don't want to store the sensitive information such as the
-                // user password in the token so we pick only the email and id
-                _id: user._id.toString(),
-                // TODO: Clink50 - Probably can just set this to true
-                isVerified: user.isVerified
-            }
-        };
-
-        // Sign the token with the payload and expire the token in a day
-        const token = sign(payload, process.env.JWT_ACCESS_TOKEN_SECRET, {
-            expiresIn: parseInt(process.env.ACCESS_TOKEN_LIFE)
-            // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
-        });
+        const payload = createPayload(user);
+        const accessToken = await sign(payload);
+        const refreshToken = await generateRefreshToken();
 
         // If the user if verified then clear the old JWT because it had information
         // saying that the user was not verified and finally go to the home page
@@ -232,23 +224,25 @@ exports.postConfirmation = async (req, res, next) => {
         }
 
         // Send back the token to the user through setting the cookie
-        res.status(200)
-            .cookie("JWT", token, {
+        return res.status(Constants.OK)
+            .cookie("JWT", accessToken, {
                 httpOnly: true,
                 // TODO: Clink50 - Set secure: true here once we have https
-                // TODO: Clink50 - Probably need to minimize how long this cookie expires for
-                maxAge: 60 * 60 * 24 * 1000 * 1 // 60 minutes * 60 seconds * 24 hours * 1000 ms * 1 day = expires in a day
-            }).sendFile(join(rootDir, "frontend", isVerifiedPage));
-
-        // Return JSON
-        // res.status(200).json({
-        //     message: "The account has been verified. Please log in.",
-        //     type: "authorized"
-        // });
+                maxAge: process.env.JWT_ACCESS_TOKEN_COOKIE_LIFE
+            })
+            .cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                maxAge: process.env.REFRESH_TOKEN_COOKIE_LIFE // year 2038 - interesting bug to look into
+            })
+            // .json({
+            //     message: "The account has been verified. Please log in.",
+            //     type: "account-verified"
+            // });
+            .sendFile(join(rootDir, "frontend", isVerifiedPage));
     // Catch any unsuspecting errors
     } catch(error) {
         if (!error.statusCode) {
-            error.statusCode = 500;
+            error.statusCode = Constants.INTERNAL_SERVER_ERROR;
         }
 
         next(error);
@@ -268,13 +262,13 @@ exports.postResendToken = async (req, res, next) => {
 
         // If there is no user then something is wrong so return an error
         if (!user) {
-            const error = catchSyncError("We were unable to find a user for this token.", 404, null);
+            const error = catchSyncError("We were unable to find a user for this token.", Constants.NOT_FOUND, null);
             throw error;
         }
 
         // If the user is already verified then throw an error
         if (user.isVerified) { 
-            const error = catchSyncError("This user has already been verified.", 400, null);
+            const error = catchSyncError("This user has already been verified.", Constants.BAD_REQUEST, null);
             throw error;
         }
 
@@ -286,12 +280,16 @@ exports.postResendToken = async (req, res, next) => {
         sendVerificationEmail(user.email, user.username, token.token);
 
         // Return JSON
-        res.sendFile(join(rootDir, "frontend", "verification-code.html"));
+        // res.status(Constants.OK).json({
+        //     message: "Verification token has been reset and sent to user.",
+        //     type: "verification-token-reset"
+        // });
+        return res.sendFile(join(rootDir, "frontend", "verification-code.html"));
 
         // Catch any unsuspecting errors
     } catch(error) {
         if (!error.statusCode) {
-            error.statusCode = 500;
+            error.statusCode = Constants.INTERNAL_SERVER_ERROR;
         }
 
         next(error);

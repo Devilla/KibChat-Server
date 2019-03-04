@@ -5,7 +5,11 @@ exports.signUpForm = [
         .trim()
         .not()
         .isEmpty()
-        .withMessage("Please enter a username."), 
+        .withMessage("Please enter a username.")
+        .isLength({
+            min: 5
+        })
+        .withMessage("Username must be at least 5 characters."), 
     body("email")
         .normalizeEmail()
         .isEmail()

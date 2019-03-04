@@ -1,12 +1,13 @@
 const path = require("path");
 const rootDir = require("../util/path-helper");
+const Constants = require("../util/constants");
 
 // Test secure controller - TODO: Clink50 - needs to be removed later
 exports.getHome = (req, res, next) => {
     try {
         console.log("Access Token to send back to client on Home:", req.accessToken);
         console.log("Refresh Token to send back to client on Home:", req.refreshToken);
-        res.status(200)
+        return res.status(Constants.OK)
             .cookie("JWT", req.accessToken, {
                 httpOnly: true,
                 // TODO: Clink50 - Set secure: true here once we have https
@@ -23,7 +24,7 @@ exports.getHome = (req, res, next) => {
         // });
     } catch (error) {
         if (!error.statusCode) {
-            error.statusCode = 500;
+            error.statusCode = Constants.INTERNAL_SERVER_ERROR;
         }
         next(error);
     }

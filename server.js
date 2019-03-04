@@ -9,13 +9,15 @@ const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 
 const rootDir = require("./util/path-helper");
+const Constants = require("./util/constants");
 
-//const isProduction = process.env.NODE_ENV === "production";
 const MONGODB_URI = `mongodb+srv://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@cluster0-xrdaa.mongodb.net/${process.env.MONGODB_DATABASE}`;
 
 // Instantiate the app server
 const app = express();
 
+// Since we are sitting behind Nginx as the reverse proxy
+app.enable("trust proxy");
 // CORS override for api calls from given domains etc.
 app.use(require("./config/cors"));
 // Accept data from the form field
@@ -40,13 +42,13 @@ require("./routes/home")(app);
 // TODO: Clink50 - need better error handling
 app.use((error, req, res, next) => {
     console.log(error);
-    // const status = error.statusCode || 500;
-    // const message = error.message;
-    return res.sendFile(path.join(rootDir, "frontend", "login.html"));
-    // return res.status(status).json({
+    const statusCode = error.statusCode || Constants.INTERNAL_SERVER_ERROR;
+    const message = error.message;
+    // return res.status(statusCode).json({
     //     message: message,
     //     errors: error
     // });
+    return res.sendFile(path.join(rootDir, "frontend", "login.html"));
 });
 
 // Bring up the server once we know that have connected the db successfully
@@ -57,6 +59,9 @@ mongoose.connect(MONGODB_URI, { useCreateIndex: true, useNewUrlParser: true })
 		app.listen(process.env.PORT || 3000, () => console.log(`Connected to DB! Server listening on port http://${process.env.HOST}:${process.env.PORT}!`));
 	})
 	.catch(err => {
-        // TODO: Clink50 - needs better error handling
-		console.log(err);
+        console.log(err);
+        return res.status(Constants.CONFLICT).json({
+            message: "Error occurred in the database.",
+            errors: err
+        });
 	});

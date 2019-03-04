@@ -34,7 +34,7 @@ passport.use("register", new LocalStrategy({
         if (!errors.isEmpty()) {
             return done(null, false, {
                 message: "Validation failed.",
-                type: "unauthorized",
+                type: "signup-failed",
                 errors: errors.array()
             });
         }
@@ -46,7 +46,7 @@ passport.use("register", new LocalStrategy({
         if(previousUser) {
             return done(null, false, {
                 message: "Email or username already exists.",
-                type: "unauthorized"
+                type: "signup-failed"
             });
         }
 
@@ -76,7 +76,7 @@ passport.use("register", new LocalStrategy({
         // Return to the controller with a success json object
         return done(null, createdUser, {
             message: "User successfully created in the database with token. Verification email sent.",
-            type: "authenticated"
+            type: "signup-successful"
         });
     
     // Catch any unsuscpecting errors that may occur
@@ -103,7 +103,7 @@ passport.use("login", new LocalStrategy({
         if (!user) {
             return done(null, false, {
                 message: "Email was not found.",
-                type: "unauthorized"
+                type: "login-failed"
             });
         }
 
@@ -115,14 +115,14 @@ passport.use("login", new LocalStrategy({
         if (!isMatch) {
             return done(null, false, {
                 message: "Password do not match.",
-                type: "unauthorized"
+                type: "login-failed"
             });
         }
 
         // Return a successful login to the controller
         return done(null, user, { 
             message: "Logged in successfully.",
-            type: user.isVerified ? "authorized" : "unauthorized"
+            type: user.isVerified ? "login-successful" : "account-not-verified"
         });
 
     // Catch any unsuscpecting errors that may occur

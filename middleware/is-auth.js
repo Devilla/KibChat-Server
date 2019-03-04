@@ -1,5 +1,7 @@
 const { sign, verify, generateRefreshToken, createPayload } = require("../services/token-service");
 
+const Constants = require("../util/constants");
+
 const RefreshToken = require("../models/refresh-token");
 
 // Middleware that checks if the user is authenticated before
@@ -18,7 +20,7 @@ exports.authenticate = async (req, res, next) => {
         const error = {
             message: "No refresh token was found. User needs to log back in.",
             type: "Not authenticated.",
-            statusCode: 401
+            statusCode: Constants.UNAUTHORIZED
         };
 
         return next(error);
@@ -45,7 +47,7 @@ exports.authenticate = async (req, res, next) => {
             console.log(err);
             const error = {
                 message: "User needs to verify account.",
-                statusCode: 500
+                statusCode: Constants.INTERNAL_SERVER_ERROR
             };
 
             return next(error);
@@ -91,7 +93,7 @@ getRefreshToken = async (refresh, res, next) => {
             console.log("Could not find a matching refresh token in the database:", refresh);
             const error = {
                 message: "Could not find the Refresh token.",
-                statusCode: 401
+                statusCode: Constants.UNAUTHORIZED
             };
 
             return next(error);
@@ -107,7 +109,7 @@ getRefreshToken = async (refresh, res, next) => {
             console.log("User is revoked.");
             const error = {
                 message: "You are revoked.",
-                statusCode: 400
+                statusCode: Constants.UNAUTHORIZED
             };
 
             return next(error);
@@ -118,7 +120,7 @@ getRefreshToken = async (refresh, res, next) => {
             console.log("User is not verified.");
             const error = {
                 message: "Please verify your account.",
-                statusCode: 401
+                statusCode: Constants.UNAUTHORIZED
             };
 
             return next(error);
@@ -155,7 +157,7 @@ getRefreshToken = async (refresh, res, next) => {
         console.log(err);
         const error = {
             message: "Something went wrong in getRefreshToken function.",
-            statusCode: 500
+            statusCode: Constants.INTERNAL_SERVER_ERROR
         };
 
         return next(error);

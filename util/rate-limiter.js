@@ -1,38 +1,14 @@
 const moment = require("moment");
 const rateLimit = require("express-rate-limit");
 
-// TODO: Clink50 - Refactor to a generic limiter
+const Constants = require("../util/constants");
 
-// Login limiter that will have 4 attempts total for 
-// a one hour window.
-exports.loginLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
-    max: 3, // 4 attempts
+exports.genericRateLimiter = (timeToKeepIpStored, maxRequests, type) => rateLimit({
+    windowMs: timeToKeepIpStored || Constants.ONE_HOUR_IN_MS, // 1 hour window 60 * 60 * 1000
+    max: maxRequests,
     handler: (req, res, next) => {
-        const data =  getRemainingTime(req.rateLimit.resetTime, "login");
-        return res.status(429).send(data);
-    }
-});
-
-// Sign up limiter that will have 5 attempts total for 
-// a one hour window.
-exports.signUpLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
-    max: 2, // 3 attempts
-    handler: (req, res, next) => {
-        const data =  getRemainingTime(req.rateLimit.resetTime, "signup");
-        return res.status(429).send(data);
-    }
-});
-
-// Verification limiter that will have 3 attempts total for 
-// a one hour window.
-exports.sendVerificationLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
-    max: 2, // 3 attempts
-    handler: (req, res, next) => {
-        const data = getRemainingTime(req.rateLimit.resetTime, "verification");
-        return res.status(429).send(data);
+        const rateLimitExceededObject = getRemainingTime(req.rateLimit.resetTime, type);
+        return res.status(Constants.RATE_LIMIT_EXCEEDED).send(rateLimitExceededObject);
     }
 });
 
@@ -49,3 +25,36 @@ function getRemainingTime(time, type) {
         type: `failed-${type}-attempt`,
     };
 };
+
+// Login limiter that will have 4 attempts total for 
+// a one hour window.
+// exports.loginLimiter = rateLimit({
+//     windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
+//     max: 3, // 4 attempts
+//     handler: (req, res, next) => {
+//         const rateLimitExceededObject =  getRemainingTime(req.rateLimit.resetTime, "login");
+//         return res.status(Constants.RATE_LIMIT_EXCEEDED).send(rateLimitExceededObject);
+//     }
+// });
+
+// // Sign up limiter that will have 5 attempts total for 
+// // a one hour window.
+// exports.signUpLimiter = rateLimit({
+//     windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
+//     max: 2, // 3 attempts
+//     handler: (req, res, next) => {
+//         const rateLimitExceededObject =  getRemainingTime(req.rateLimit.resetTime, "signup");
+//         return res.status(Constants.RATE_LIMIT_EXCEEDED).send(rateLimitExceededObject);
+//     }
+// });
+
+// // Verification limiter that will have 3 attempts total for 
+// // a one hour window.
+// exports.sendVerificationLimiter = rateLimit({
+//     windowMs: 60 * 60 * 1000, // 1 hour window 60 * 60 * 1000
+//     max: 2, // 3 attempts
+//     handler: (req, res, next) => {
+//         const rateLimitExceededObject = getRemainingTime(req.rateLimit.resetTime, "verification");
+//         return res.status(Constants.RATE_LIMIT_EXCEEDED).send(rateLimitExceededObject);
+//     }
+// });
